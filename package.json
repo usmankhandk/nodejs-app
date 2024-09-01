@@ -11,12 +11,16 @@
   "author": "Your Name",
   "license": "ISC",
   "dependencies": {
+    "aws-cdk-lib": "^2.155.0",
+    "constructs": "^10.3.0",
     "express": "^4.17.1"
   },
   "directories": {
     "lib": "lib",
     "test": "test"
   },
-  "devDependencies": {},
-  "keywords": []
+  "keywords": [],
+  "devDependencies": {
+    "@types/node": "^22.5.2"
+  }
 }
