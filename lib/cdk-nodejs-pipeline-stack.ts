@@ -7,6 +7,7 @@ import * as codepipeline from 'aws-cdk-lib/aws-codepipeline';
 import * as codebuild from 'aws-cdk-lib/aws-codebuild';
 import * as codepipeline_actions from 'aws-cdk-lib/aws-codepipeline-actions';
 import * as s3 from 'aws-cdk-lib/aws-s3';
+import * as iam from 'aws-cdk-lib/aws-iam';
 import { SecretValue } from 'aws-cdk-lib';
 
 export class CdkNodejsPipelineStack extends cdk.Stack {
@@ -59,48 +60,62 @@ export class CdkNodejsPipelineStack extends cdk.Stack {
       outputs: [buildOutput],
     });
 
-  // Define a VPC with public subnets
-  const vpc = new ec2.Vpc(this, 'MyVpc', {
-    maxAzs: 3,
-    natGateways: 1,
-    subnetConfiguration: [
-      {
-        subnetType: ec2.SubnetType.PUBLIC, // Public subnet
-        name: 'PublicSubnet',
-      },
-      {
-        subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS, // Private subnet with NAT
-        name: 'PrivateSubnet',
-      },
-    ],
-  });
-
-
-    // Define a Security Group for the EC2 instances
-    const securityGroup = new ec2.SecurityGroup(this, 'InstanceSecurityGroup', {
-      vpc,
-      description: 'Allow SSH and HTTP traffic',
-      allowAllOutbound: true,
+    // Create an IAM Role
+    const role = new iam.Role(this, 'MyInstanceRole', {
+      assumedBy: new iam.ServicePrincipal('ec2.amazonaws.com'), // EC2 service will assume this role
     });
 
-    securityGroup.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(22), 'Allow SSH access');
-    securityGroup.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(80), 'Allow HTTP access');
+    // Attach policies to the role
+    role.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonS3ReadOnlyAccess')); // Example: Allow read access to S3
 
+    // Define a VPC with public subnets
+    const vpc = new ec2.Vpc(this, 'MyVpc', {
+      maxAzs: 3,
+      natGateways: 1,
+      subnetConfiguration: [
+        {
+          subnetType: ec2.SubnetType.PUBLIC, // Public subnet
+          name: 'PublicSubnet',
+        },
+        {
+          subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS, // Private subnet with NAT
+          name: 'PrivateSubnet',
+        },
+      ],
+    });
 
-// Define an Auto Scaling Group with public IPs
-const asg = new autoscaling.AutoScalingGroup(this, 'MyAutoScalingGroup', {
-  vpc,
-  instanceType: new ec2.InstanceType('t2.micro'),
-  machineImage: new ec2.AmazonLinuxImage(),
-  vpcSubnets: {
-    subnetType: ec2.SubnetType.PUBLIC, // Use public subnets
-  },
-  associatePublicIpAddress: true, // Assign public IP addresses
-});
+    // Define a Security Group
+    const securityGroup = new ec2.SecurityGroup(this, 'MySecurityGroup', {
+      vpc,
+      description: 'Allow SSH and HTTP traffic',
+      allowAllOutbound: true, // Allow outbound traffic
+    });
 
+    // Allow SSH (port 22) from anywhere
+    securityGroup.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(22), 'Allow SSH access from anywhere');
 
-    // Ensure the EC2 instance has the necessary permissions
+    // Allow HTTP (port 80) from anywhere
+    securityGroup.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(80), 'Allow HTTP access from anywhere');
+
+    // Optionally, allow HTTPS (port 443) from anywhere
+    securityGroup.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443), 'Allow HTTPS access from anywhere');
+
+    // Define an Auto Scaling Group with public IPs
+    const asg = new autoscaling.AutoScalingGroup(this, 'MyAutoScalingGroup', {
+      vpc,
+      instanceType: new ec2.InstanceType('t2.micro'),
+      machineImage: new ec2.AmazonLinuxImage(),
+      vpcSubnets: {
+        subnetType: ec2.SubnetType.PUBLIC, // Ensure instances are in public subnets
+      },
+      associatePublicIpAddress: true, // Assign public IP addresses
+      securityGroup: securityGroup, // Associate the security group
+      role: role, // Associate the IAM role
+    });
+
+    // Ensure the EC2 instance has the necessary permissions and installs CodeDeploy agent
     asg.addUserData(
+      'yum update -y',
       'yum install -y ruby',
       'yum install -y wget',
       'cd /home/ec2-user',
