@@ -1,5 +1,9 @@
 import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
+import * as codedeploy from 'aws-cdk-lib/aws-codedeploy';
+import * as ec2 from 'aws-cdk-lib/aws-ec2';
+import * as autoscaling from 'aws-cdk-lib/aws-autoscaling';
+
 import * as codepipeline from 'aws-cdk-lib/aws-codepipeline';
 import * as codebuild from 'aws-cdk-lib/aws-codebuild';
 import * as codepipeline_actions from 'aws-cdk-lib/aws-codepipeline-actions';
@@ -56,7 +60,40 @@ export class CdkNodejsPipelineStack extends cdk.Stack {
       outputs: [buildOutput],
     });
 
-    // Ensure this is the only pipeline with this name
+    // Define a VPC
+    const vpc = new ec2.Vpc(this, 'MyVpc', {
+      maxAzs: 3
+    });
+
+    // Define an Auto Scaling Group
+    const asg = new autoscaling.AutoScalingGroup(this, 'MyAutoScalingGroup', {
+      vpc,
+      instanceType: new ec2.InstanceType('t2.micro'),
+      machineImage: new ec2.AmazonLinuxImage(),
+    });
+
+    // Create a CodeDeploy application
+    const codeDeployApp = new codedeploy.ServerApplication(this, 'MyCodeDeployApplication', {
+      applicationName: 'MyCodeDeployApp',
+    });
+
+    // Create a CodeDeploy deployment group
+    const deploymentGroup = new codedeploy.ServerDeploymentGroup(this, 'MyCodeDeployDeploymentGroup', {
+      application: codeDeployApp,
+      deploymentGroupName: 'MyDeploymentGroup',
+      autoScalingGroups: [asg],
+      installAgent: true, // Automatically install the CodeDeploy agent
+      deploymentConfig: codedeploy.ServerDeploymentConfig.ALL_AT_ONCE, // Deployment strategy
+    });
+
+    // Define the deploy action
+    const deployAction = new codepipeline_actions.CodeDeployServerDeployAction({
+      actionName: 'Deploy',
+      input: buildOutput,
+      deploymentGroup,
+    });
+
+    // Define the pipeline
     new codepipeline.Pipeline(this, 'MyUniquePipeline', {
       pipelineName: 'MyNodejsAppPipeline',
       stages: [
@@ -68,7 +105,10 @@ export class CdkNodejsPipelineStack extends cdk.Stack {
           stageName: 'Build',
           actions: [buildAction],
         },
-        // Add more stages like Deploy here
+        {
+          stageName: 'Deploy',
+          actions: [deployAction],
+        },
       ],
       artifactBucket: artifactBucket,
     });
