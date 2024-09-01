@@ -74,16 +74,18 @@ export class CdkNodejsPipelineStack extends cdk.Stack {
     securityGroup.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(22), 'Allow SSH access');
     securityGroup.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(80), 'Allow HTTP access');
 
-    // Define an Auto Scaling Group
-    const asg = new autoscaling.AutoScalingGroup(this, 'MyAutoScalingGroup', {
-      vpc,
-      instanceType: new ec2.InstanceType('t2.micro'),
-      machineImage: new ec2.AmazonLinuxImage(),
-      securityGroup,
-      minCapacity: 1,
-      maxCapacity: 2,
-      userData: ec2.UserData.forLinux(),
-    });
+
+// Define an Auto Scaling Group with public IPs
+const asg = new autoscaling.AutoScalingGroup(this, 'MyAutoScalingGroup', {
+  vpc,
+  instanceType: new ec2.InstanceType('t2.micro'),
+  machineImage: new ec2.AmazonLinuxImage(),
+  vpcSubnets: {
+    subnetType: ec2.SubnetType.PUBLIC, // Use public subnets
+  },
+  associatePublicIpAddress: true, // Assign public IP addresses
+});
+
 
     // Ensure the EC2 instance has the necessary permissions
     asg.addUserData(
