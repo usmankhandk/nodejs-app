@@ -60,14 +60,6 @@ export class CdkNodejsPipelineStack extends cdk.Stack {
       outputs: [buildOutput],
     });
 
-    // Create an IAM Role
-    const role = new iam.Role(this, 'MyInstanceRole', {
-      assumedBy: new iam.ServicePrincipal('ec2.amazonaws.com'), // EC2 service will assume this role
-    });
-
-    // Attach policies to the role
-    role.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonS3ReadOnlyAccess')); // Example: Allow read access to S3
-
     // Define a VPC with public subnets
     const vpc = new ec2.Vpc(this, 'MyVpc', {
       maxAzs: 3,
@@ -100,6 +92,14 @@ export class CdkNodejsPipelineStack extends cdk.Stack {
     // Optionally, allow HTTPS (port 443) from anywhere
     securityGroup.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443), 'Allow HTTPS access from anywhere');
 
+    // Create an IAM Role for EC2 instances
+    const role = new iam.Role(this, 'MyInstanceRole', {
+      assumedBy: new iam.ServicePrincipal('ec2.amazonaws.com'), // EC2 service will assume this role
+    });
+
+    // Attach policies to the role
+    role.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonS3ReadOnlyAccess')); // Example: Allow read access to S3
+
     // Define an Auto Scaling Group with public IPs
     const asg = new autoscaling.AutoScalingGroup(this, 'MyAutoScalingGroup', {
       vpc,
@@ -111,11 +111,11 @@ export class CdkNodejsPipelineStack extends cdk.Stack {
       associatePublicIpAddress: true, // Assign public IP addresses
       securityGroup: securityGroup, // Associate the security group
       role: role, // Associate the IAM role
+      healthCheck: autoscaling.HealthCheck.ec2(), // Add health checks for the Auto Scaling Group
     });
 
-    // Ensure the EC2 instance has the necessary permissions and installs CodeDeploy agent
+    // Ensure the EC2 instance has the necessary permissions
     asg.addUserData(
-      'yum update -y',
       'yum install -y ruby',
       'yum install -y wget',
       'cd /home/ec2-user',
@@ -138,7 +138,6 @@ export class CdkNodejsPipelineStack extends cdk.Stack {
       autoScalingGroups: [asg],
       installAgent: true, // Automatically install the CodeDeploy agent
       deploymentConfig: codedeploy.ServerDeploymentConfig.ALL_AT_ONCE, // Deployment strategy
-      healthCheck: autoscaling.HealthCheck.ec2(), // Optional: add health checks for the Auto Scaling Group
       autoRollback: {
         failedDeployment: true, // Optional: rollback if the deployment fails
       },
