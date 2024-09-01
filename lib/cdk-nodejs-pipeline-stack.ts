@@ -3,7 +3,6 @@ import { Construct } from 'constructs';
 import * as codedeploy from 'aws-cdk-lib/aws-codedeploy';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as autoscaling from 'aws-cdk-lib/aws-autoscaling';
-
 import * as codepipeline from 'aws-cdk-lib/aws-codepipeline';
 import * as codebuild from 'aws-cdk-lib/aws-codebuild';
 import * as codepipeline_actions from 'aws-cdk-lib/aws-codepipeline-actions';
@@ -65,12 +64,38 @@ export class CdkNodejsPipelineStack extends cdk.Stack {
       maxAzs: 3
     });
 
+    // Define a Security Group for the EC2 instances
+    const securityGroup = new ec2.SecurityGroup(this, 'InstanceSecurityGroup', {
+      vpc,
+      description: 'Allow SSH and HTTP traffic',
+      allowAllOutbound: true,
+    });
+
+    securityGroup.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(22), 'Allow SSH access');
+    securityGroup.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(80), 'Allow HTTP access');
+
     // Define an Auto Scaling Group
     const asg = new autoscaling.AutoScalingGroup(this, 'MyAutoScalingGroup', {
       vpc,
       instanceType: new ec2.InstanceType('t2.micro'),
       machineImage: new ec2.AmazonLinuxImage(),
+      securityGroup,
+      minCapacity: 1,
+      maxCapacity: 2,
+      userData: ec2.UserData.forLinux(),
     });
+
+    // Ensure the EC2 instance has the necessary permissions
+    asg.addUserData(
+      'yum install -y ruby',
+      'yum install -y wget',
+      'cd /home/ec2-user',
+      'wget https://aws-codedeploy-eu-west-2.s3.eu-west-2.amazonaws.com/latest/install',
+      'chmod +x ./install',
+      './install auto',
+      'service codedeploy-agent start',
+      'chmod +x /home/ec2-user/myapp/scripts/*.sh'
+    );
 
     // Create a CodeDeploy application
     const codeDeployApp = new codedeploy.ServerApplication(this, 'MyCodeDeployApplication', {
@@ -84,6 +109,10 @@ export class CdkNodejsPipelineStack extends cdk.Stack {
       autoScalingGroups: [asg],
       installAgent: true, // Automatically install the CodeDeploy agent
       deploymentConfig: codedeploy.ServerDeploymentConfig.ALL_AT_ONCE, // Deployment strategy
+      healthCheck: autoscaling.HealthCheck.ec2(), // Optional: add health checks for the Auto Scaling Group
+      autoRollback: {
+        failedDeployment: true, // Optional: rollback if the deployment fails
+      },
     });
 
     // Define the deploy action
