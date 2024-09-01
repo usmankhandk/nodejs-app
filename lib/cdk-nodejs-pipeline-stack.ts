@@ -59,10 +59,22 @@ export class CdkNodejsPipelineStack extends cdk.Stack {
       outputs: [buildOutput],
     });
 
-    // Define a VPC
-    const vpc = new ec2.Vpc(this, 'MyVpc', {
-      maxAzs: 3
-    });
+  // Define a VPC with public subnets
+  const vpc = new ec2.Vpc(this, 'MyVpc', {
+    maxAzs: 3,
+    natGateways: 1,
+    subnetConfiguration: [
+      {
+        subnetType: ec2.SubnetType.PUBLIC, // Public subnet
+        name: 'PublicSubnet',
+      },
+      {
+        subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS, // Private subnet with NAT
+        name: 'PrivateSubnet',
+      },
+    ],
+  });
+
 
     // Define a Security Group for the EC2 instances
     const securityGroup = new ec2.SecurityGroup(this, 'InstanceSecurityGroup', {
